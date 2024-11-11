@@ -1,11 +1,14 @@
 using Newtonsoft.Json;
 using Npgsql;
 using System.Diagnostics;
+using System.Web;
 
 namespace thesis_api
 {
     internal class Program
     {
+        static string mock_key = "0dd18a256cb649e48b71f593c5dd963f";
+
         static void Main()
         {
             // web application
@@ -25,39 +28,54 @@ namespace thesis_api
             // login
             IResult login(string email, string password)
             {
-                if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password)) return Results.BadRequest("email and password are required");
+                // error: no inputs
+                if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password)) return Results.BadRequest();
 
-                (string result, bool success) = utility.query($"select * from registered_users where email = '{email}' and password = '{password}'").Result;
-                if (!success) return Results.NotFound(result);
+                //query
+                (string result, bool success) = utility.query($"select api_key from registered_users where email = '{HttpUtility.UrlDecode(email)}' and password = '{password}'").Result;
+
+                // error: internal server error
+                if (!success) return Results.StatusCode(500);
 
                 string[] rows = result
                     .Split('\n')
                     .Where(x => x != "")
                     .ToArray();
 
-                // error: database exception (non unique)
-                if (rows.Length != 1) return Results.NotFound("Database inconsistency!");
+                // error: non unique record -> internal server error
+                if (rows.Length  > 1) return Results.StatusCode(500);
 
-                // OK
-                return Results.Ok("Authorized!");
+                // error: no match
+                if (rows.Length == 0) return Results.NotFound();
+
+                // OK: returning API key
+                string response = rows[0].Trim(';');
+                return Results.Ok(response);
             }
 
             // register
             IResult register(string email, string password)
             {
-                if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password)) return Results.BadRequest("email and password are required");
+                // error: no inputs
+                if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password)) return Results.BadRequest();
+
+                // query
+                (string result, bool success) = utility.query($"select id from registered_users where email = '{HttpUtility.UrlDecode(email)}'").Result;
+
+                // error: internal server error
+                if (!success) return Results.StatusCode(500);
 
                 // error: user already registered
-                (string result1, bool success1) = utility.query($"select id from registered_users where email = '{email}'").Result;
-                if (!success1) return Results.NotFound(result1);
-                if (result1 != "") return Results.BadRequest("email already registered");
+                if (result != "") return Results.NotFound();
 
-                // error: database exception
-                (string result2, bool success2) = utility.execute($"insert into registered_users (email, password) values ('{email}', '{password}')").Result;
-                if (!success2) return Results.NotFound(result2);
+                // query
+                (result, success) = utility.execute($"insert into registered_users (email, password, api_key) values ('{HttpUtility.UrlDecode(email)}', '{password}', '{mock_key}')").Result;
+
+                // error: internal server error
+                if (!success) return Results.StatusCode(500);
 
                 // OK
-                return Results.Ok(result2);
+                return Results.Ok();
             }
 
             // database update
