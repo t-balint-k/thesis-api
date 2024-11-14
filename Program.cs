@@ -1,7 +1,8 @@
-using Newtonsoft.Json;
-using Npgsql;
+﻿using Newtonsoft.Json;
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Web;
+using static System.Net.WebRequestMethods;
 
 namespace thesis_api
 {
@@ -18,12 +19,17 @@ namespace thesis_api
             // endpoints
             wa.MapGet("/v1/login",    (string email, string password) => { return login(email, password);    });
             wa.MapGet("/v1/register", (string email, string password) => { return register(email, password); });
-            wa.MapGet("/v1/update",   (string endpoint)               => { return update(endpoint); });
+            wa.MapGet("/v1/update_securities",                     () => { return update_securities().Result; });
+            wa.MapGet("/v1/update_meta",                           () => { return update_meta().Result; });
 
             // start
             wa.Run("http://0.0.0.0:5000");
 
+
+
             /* METHODS */
+
+
 
             // login
             IResult login(string email, string password)
@@ -78,138 +84,95 @@ namespace thesis_api
                 return Results.Ok();
             }
 
-            // database update
-            IResult update(string endpoint)
+            // database update : securities
+            async Task<IResult> update_securities()
             {
                 // truncate destination table
                 Console.WriteLine("Truncating destination table!");
-                (string result1, bool success1) = utility.execute("truncate table securities_input").Result;
-                if (!success1) return Results.NotFound(result1);
+                (string result, bool success) = await utility.execute("truncate table securities_input");
+                if (!success) return Results.NotFound(result);
 
+                // security types
+                foreach (string n in new string[] { $"stocks?country=USA", "forex_pairs", "cryptocurrencies", "commodities" })
+                {
+                    (success, List<security> securities) = await call<security>($"{n}");
+                    if (!success) return Results.NotFound("Külső szolgáltató hiba!");
+
+                    // bulk upload input data
+                    (result, success) = await utility.import(securities, n.Replace("?country=USA", ""));
+                    if (!success) return Results.NotFound(result);
+                }
+
+                // done
+                return Results.Ok("DONE");
+            }
+
+            // database update : meta
+            async Task<IResult> update_meta()
+            {
+                // countries
+                Console.WriteLine("Truncating countries table!");
+                (string result, bool success) = await utility.execute("truncate table countries");
+                if (!success) return Results.NotFound(result);
+
+                (success, List<country> countries) = await call<country>($"countries?apikey={mock_key}");
+                if (!success) return Results.NotFound("Külső szolgáltató hiba!");
+
+                Console.WriteLine("Uploading to database...");
+                try
+                {
+                    foreach (country n in countries)
+                    {
+                        (result, success) = await utility.execute($"insert into countries (name, iso3) values ('{n.name.Replace("'", "''")}', '{n.iso3.Replace("'", "''")}')");
+                        if (!success) return Results.NotFound(result);
+                    }
+                }
+                catch { return Results.NotFound("Ismeretlen hiba!"); }
+
+                // countries
+                Console.WriteLine("Truncating exchanges table!");
+                (result, success) = await utility.execute("truncate table exchanges");
+                if (!success) return Results.NotFound(result);
+
+                (success, List<exchange> exchanges) = await call<exchange>($"exchanges?apikey={mock_key}");
+                if (!success) return Results.NotFound("Külső szolgáltató hiba!");
+
+                Console.WriteLine("Uploading to database...");
+                try
+                {
+                    foreach (exchange n in exchanges)
+                    {
+                        (result, success) = await utility.execute($"insert into exchanges (name, country) values ('{n.name.Replace("'", "''")}', '{n.country.Replace("'", "''")}')");
+                        if (!success) return Results.NotFound(result);
+                    }
+                }
+                catch { return Results.NotFound("Ismeretlen hiba!"); }
+
+                return Results.Ok("OK");
+            }
+
+            // third party API call
+            async Task<(bool, List<T>)> call<T>(string endpoint)
+            {
                 // get
-                List<security> elements = get_response().Result;
+                HttpClient http = new HttpClient();
+                Console.WriteLine($"Retrieving {endpoint} data ({DateTime.Now})");
 
-                // upload input data
-                (string result2, bool success2) = utility.import(elements, endpoint).Result;
-                if (!success2) return Results.NotFound(result2);
-
-                // temp
-                Debug.Print("DONE!");
-                return Results.Ok(result2);
-
-                // consolidate
-
-                async Task<List<security>> get_response()
-                {
-                    HttpClient http = new HttpClient();
-
-                    Console.WriteLine("Retrieving online data!");
-                    string response = await http.GetStringAsync($"https://api.twelvedata.com/{endpoint}");
-
-                    Console.WriteLine("Deserializing json data!");
-                    return JsonConvert.DeserializeObject<packet>(response).data;
-                }
-            }
-        }
-
-        public static class utility
-        {
-            // db context and connection string
-            const string connection_string = "Host=10.2.0.202;Username=admin;Password=asd;Database=thesis;Include Error Detail=true";
-
-            private static NpgsqlDataSource DB;
-            private static NpgsqlDataSource db_context
-            {
-                get
-                {
-                    if (DB == null) DB = NpgsqlDataSource.Create(connection_string);
-                    return DB;
-                }
-            }
-
-            // query
-            public static async Task<(string, bool)> query(string command)
-            {
+                string response = "";
                 try
                 {
-                    string result = "";
+                    response = await http.GetStringAsync($"https://api.twelvedata.com/{endpoint}");
 
-                    await using (NpgsqlCommand cmd = db_context.CreateCommand(command))
-                    await using (NpgsqlDataReader data = await cmd.ExecuteReaderAsync())
-                    {
-                        while (await data.ReadAsync())
-                        {
-                            string row = "";
-                            for (int i = 0; i < data.FieldCount; i++) row = $"{row}{data.GetValue(i)};";
-                            result = $"{result}{row}\n";
-                        }
-                    }
+                    Console.WriteLine("   Deserializing results...");
+                    List<T> elements = JsonConvert.DeserializeObject<packet<T>>(response).data;
 
-                    return (result, true);
+                    return (true, elements);
                 }
 
-                catch (Exception ex)
+                catch
                 {
-                    return (ex.Message, false);
-                }
-            }
-
-            // command
-            public static async Task<(string, bool)> execute(string command)
-            {
-                try
-                {
-                    int result = 00;
-
-                    await using (NpgsqlCommand cmd = db_context.CreateCommand(command))
-                    {
-                        result = await cmd.ExecuteNonQueryAsync();
-                    }
-
-                    return ($"{result} rows affected.", true);
-                }
-
-                catch (Exception ex)
-                {
-                    return (ex.Message, false);
-                }
-            }
-
-            // binary copy
-            public static async Task<(string, bool)> import(List<security> data, string endpoint)
-            {
-                try
-                {
-                    await using (NpgsqlConnection conn = new NpgsqlConnection(connection_string))
-                    {
-                        conn.Open();
-                        await using (var writer = conn.BeginBinaryImport("COPY securities_input (security_type, symbol, exchange, currency, currency_base, currency_quote, name, country, type) FROM STDIN (FORMAT BINARY)"))
-                        {
-                            Console.WriteLine("Importing bulk data!");
-                            foreach (security n in data.Distinct())
-                            {
-                                writer.StartRow();
-                                writer.Write(endpoint);
-                                writer.Write(n.symbol);
-                                writer.Write(n.exchange == null ? "" : n.exchange);
-                                writer.Write(n.currency == null ? "" : n.currency);
-                                writer.Write(n.currency_base == null ? "" : n.currency_base);
-                                writer.Write(n.currency_quote == null ? "" : n.currency_quote);
-                                writer.Write(n.name);
-                                writer.Write(n.country);
-                                writer.Write(n.type);
-                            }
-
-                            string result = writer.Complete().ToString() + " rows affected.";
-
-                            return (result, true);
-                        }
-                    }
-                }
-
-                catch (Exception ex)
-                {
-                    return (ex.Message, false);
+                    // error calling third party API
+                    return (false, new List<T>());
                 }
             }
         }
