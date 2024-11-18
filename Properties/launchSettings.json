@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "thesis_api": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:50509;http://localhost:50510"
+    }
+  }
+}
