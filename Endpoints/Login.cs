@@ -10,7 +10,7 @@ namespace thesis_api
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password)) return SendResponse.BadRequest();
 
             //query
-            (string result, bool success) = DBHelper.DatabaseQuery($"select api_key from registered_users where email = '{HttpUtility.UrlDecode(email)}' and password = '{password}'").Result;
+            (string result, bool success) = DBHelper.DatabaseQuery($"select id, api_key from registered_users where email = '{HttpUtility.UrlDecode(email)}' and password = '{password}'").Result;
 
             // error: internal server error
             if (!success) return SendResponse.ServerError(result);
@@ -27,7 +27,7 @@ namespace thesis_api
             if (rows.Length == 0) return SendResponse.NotFound($"email-password combo '{email}' '{password}'");
 
             // OK: returning API key
-            string response = rows[0].Trim(';');
+            string response = rows[0];
             return Results.Ok(response);
         }
     }

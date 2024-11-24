@@ -53,7 +53,7 @@ namespace thesis_api
                     }
                 }
 
-                return (result.Trim('\n'), true);
+                return (result, true);
             }
 
             catch (Exception ex)

@@ -97,7 +97,7 @@ namespace thesis_api
 
                 // insert commands
                 string[] inserts = [];
-                if (target == "countries") inserts = elements.Cast<Country>().Select(x => $"insert into countries (name, iso3) values ('{x.name.Replace("'", "''")}', '{x.iso3.Replace("'", "''")}')").ToArray();
+                if (target == "countries") inserts = elements.Cast<Country>().Select(x => $"insert into countries (name, iso3, currency) values ('{x.name.Replace("'", "''")}', '{x.iso3.Replace("'", "''")}', '{x.currency}')").ToArray();
                 if (target == "exchanges") inserts = elements.Cast<Exchange>().Select(x => $"insert into exchanges (name, country) values ('{x.name.Replace("'", "''")}', '{x.country.Replace("'", "''")}')").ToArray();
 
                 // upload
@@ -209,6 +209,7 @@ namespace thesis_api
         {
             public required string name;
             public required string iso3;
+            public required string currency;
         }
 
         class Exchange
