@@ -1,29 +1,30 @@
-﻿namespace thesis_api
+﻿namespace ThesisAPI
 {
     public static partial class Endpoint
     {
-        public static IResult RemovePortfolio(int? portfolio_id)
+        public static async Task<IResult> PortfolioRemove(int? portfolio_id)
         {
             // Error : no inputs
             if (portfolio_id == null) return Results.BadRequest();
 
             // Query
-            (string result, bool success) = DBHelper.DatabaseQuery($"select id from portfolios where id = {portfolio_id}").Result;
+            string whereClause = $"where id = {portfolio_id}";
+            (bool success, string result, int records) = await DBHelper.DatabaseQuery("portfolio", "id", whereClause);
 
             // Error : internal server error
             if (!success) return SendResponse.ServerError(result);
 
             // Error : portfolio does not exist
-            if (result == "") return SendResponse.NotFound($"portforio {portfolio_id}");
+            if (records == 0) return SendResponse.NotFound($"portforio {portfolio_id}");
 
             // Query
-            (result, success) = DBHelper.DatabaseExecute($"delete from portfolios where id = {portfolio_id}").Result;
+            (success, result) = await DBHelper.DatabaseExecute($"delete from portfolio where id = {portfolio_id}");
 
             // Error : internal server error
             if (!success) return SendResponse.ServerError(result);
 
             // Ok
-            return Results.Ok();
+            return SendResponse.Ok("{}");
         }
     }
 }

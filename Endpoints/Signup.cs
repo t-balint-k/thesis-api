@@ -1,31 +1,32 @@
 ﻿using System.Web;
 
-namespace thesis_api
+namespace ThesisAPI
 {
     public static partial class Endpoint
     {
-        public static IResult Signup(string? email, string? password)
+        public static async Task<IResult> Signup(string? email, string? password)
         {
             // Error : no inputs
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password)) return SendResponse.BadRequest();
 
             // Query
-            (string result, bool success) = DBHelper.DatabaseQuery($"select id from registered_users where email = '{HttpUtility.UrlDecode(email)}'").Result;
+            string whereClause = $"where email = '{HttpUtility.UrlDecode(email)}'";
+            (bool success, string result, int records) = await DBHelper.DatabaseQuery("registered_user", "id", whereClause);
 
             // Error : internal server error
             if (!success) return SendResponse.ServerError(result);
 
             // Error : user already registered
-            if (result != "") return SendResponse.AlreadyExists(email);
+            if (records != 0) return SendResponse.AlreadyExists(email);
 
             // Query
-            (result, success) = DBHelper.DatabaseExecute($"insert into registered_users (email, password, api_key) values ('{HttpUtility.UrlDecode(email)}', '{password}', '{DBHelper.masterkey}')").Result;
+            (success, result) = await DBHelper.DatabaseExecute($"insert into registered_user (email, password, api_key) values ('{HttpUtility.UrlDecode(email)}', '{password}', '{DBHelper.Masterkey}')");
 
             // Error: internal server error
             if (!success) return SendResponse.ServerError(result);
 
             // Ok
-            return Results.Ok();
+            return SendResponse.Ok("{}");
         }
     }
 }

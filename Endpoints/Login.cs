@@ -1,34 +1,29 @@
 ﻿using System.Web;
 
-namespace thesis_api
+namespace ThesisAPI
 {
     public static partial class Endpoint
     {
-        public static IResult Login(string? email, string? password)
+        public static async Task<IResult> Login(string? email, string? password)
         {
             // error: no inputs
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password)) return SendResponse.BadRequest();
 
             //query
-            (string result, bool success) = DBHelper.DatabaseQuery($"select id, api_key from registered_users where email = '{HttpUtility.UrlDecode(email)}' and password = '{password}'").Result;
+            string whereClause = $"where email = '{HttpUtility.UrlDecode(email)}' and password = '{password}'";
+            (bool success, string result, int records) = await DBHelper.DatabaseQuery("registered_user", "id,api_key", whereClause);
 
             // error: internal server error
             if (!success) return SendResponse.ServerError(result);
 
-            string[] rows = result
-                .Split('\n')
-                .Where(x => x != "")
-                .ToArray();
-
             // error: non unique record -> internal server error
-            if (rows.Length > 1) return SendResponse.ServerError("query returned multiple records");
+            if (records > 1) return SendResponse.ServerError("query returned multiple records");
 
             // error: no match
-            if (rows.Length == 0) return SendResponse.NotFound($"email-password combo '{email}' '{password}'");
+            if (records == 0) return SendResponse.NotFound($"email-password combo '{email}' '{password}'");
 
             // OK: returning API key
-            string response = rows[0];
-            return Results.Ok(response);
+            return SendResponse.Ok(result);
         }
     }
 }

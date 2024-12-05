@@ -1,13 +1,17 @@
 ﻿using Newtonsoft.Json;
 
-namespace thesis_api
+namespace ThesisAPI
 {
     public static partial class Endpoint
     {
         // Fored update (manually by admin)
         public static async Task<IResult> ForceUpdate(string? target)
         {
-            if (string.IsNullOrEmpty(target)) return SendResponse.BadRequest();
+            if (string.IsNullOrEmpty(target))
+            {
+                Console.WriteLine("Target omitted, assuming full database update!");
+                target = "all";
+            }
 
             // Execute update
             (bool success, string result) = await UpdateValueSets.ExecuteUpdate(target);
@@ -77,33 +81,33 @@ namespace thesis_api
         static async Task<UpdateResult> UpdateMeta()
         {
             // metadata for in-app filters
-            UpdateResult c = await GetMeta<Country>("countries");
-            UpdateResult e = await GetMeta<Exchange>("exchanges");
+            UpdateResult c = await GetMeta<Country>("country", "countries");
+            UpdateResult e = await GetMeta<Exchange>("exchange", "exchanges");
 
             // done
             if (c.success && e.success) return new UpdateResult(true, "");
             return new UpdateResult(false, string.Join("\n\n", [c.message, e.message]));
 
             // funcion
-            static async Task<UpdateResult> GetMeta<T>(string target)
+            static async Task<UpdateResult> GetMeta<T>(string targetTable, string targetAPI)
             {
                 // truncate
-                (string result, bool success) = await DBHelper.DatabaseExecute($"truncate table {target}");
+                (bool success, string result) = await DBHelper.DatabaseExecute($"truncate table {targetTable}");
                 if (!success) return new UpdateResult(false, result);
 
                 // acqury
-                (success, List<T> elements) = await MakeCall<T>($"{target}?apikey={DBHelper.masterkey}");
+                (success, List<T> elements) = await MakeCall<T>($"{targetAPI}?apikey={DBHelper.Masterkey}");
                 if (!success) return new UpdateResult(false, "Külső szolgáltató hiba!");
 
                 // insert commands
                 string[] inserts = [];
-                if (target == "countries") inserts = elements.Cast<Country>().Select(x => $"insert into countries (name, iso3, currency) values ('{x.name.Replace("'", "''")}', '{x.iso3.Replace("'", "''")}', '{x.currency}')").ToArray();
-                if (target == "exchanges") inserts = elements.Cast<Exchange>().Select(x => $"insert into exchanges (name, country) values ('{x.name.Replace("'", "''")}', '{x.country.Replace("'", "''")}')").ToArray();
+                if (targetTable == "country")  inserts = elements.Cast<Country>() .Select(x => $"insert into country (name, iso3, currency) values ('{x.name.Replace("'", "''")}', '{x.iso3.Replace("'", "''")}', '{x.currency}')").ToArray();
+                if (targetTable == "exchange") inserts = elements.Cast<Exchange>().Select(x => $"insert into exchange (name, country) values ('{x.name.Replace("'", "''")}', '{x.country.Replace("'", "''")}')").ToArray();
 
                 // upload
                 foreach (string n in inserts)
                 {
-                    (result, success) = await DBHelper.DatabaseExecute(n);
+                    (success, result) = await DBHelper.DatabaseExecute(n);
                     if (!success) return new UpdateResult(false, result);
                 }
 
@@ -116,18 +120,18 @@ namespace thesis_api
         static async Task<UpdateResult> UpdateSecuritiesInputData()
         {
             // truncate destination table
-            (string result1, bool success1) = await DBHelper.DatabaseExecute("truncate table securities_input");
+            (bool success1, string result1) = await DBHelper.DatabaseExecute("truncate table instrument_input");
             if (!success1) return new UpdateResult(false, result1);
 
             // security types
             foreach (string n in new string[] { "stocks", "forex_pairs", "cryptocurrencies", "indices", "commodities" /*", funds", "bonds", "etfs"*/ })
             {
                 // third party API call
-                (bool success2, List<Security> securities) = await MakeCall<Security>($"{n}");
+                (bool success2, List<Instrument> instruments) = await MakeCall<Instrument>($"{n}");
                 if (!success2) return new UpdateResult(false, "Külső szolgáltató hiba!");
 
                 // bulk upload input data
-                (string result2, success2) = await DBHelper.DatabaseBulkImport(securities, n);
+                (success2, string result2) = await DBHelper.DatabaseBulkImport(instruments, n);
                 if (!success2) return new UpdateResult(false, result2);
 
             }
@@ -140,7 +144,7 @@ namespace thesis_api
         static async Task<UpdateResult> UpdateResultTable()
         {
             // consolidating data
-            (string result, bool success) = await DBHelper.DatabaseExecute("call consolidate_securities()");
+            (bool success, string result) = await DBHelper.DatabaseExecute("call consolidate_instruments()");
             if (!success) return new UpdateResult(false, result);
 
             // done
@@ -166,7 +170,7 @@ namespace thesis_api
                 if (endpoint != "cryptocurrencies") return (true, elements);
 
                 // handling crypto's irregular structure
-                Security[] s = elements.Cast<Security>().SelectMany(x => (x.available_exchanges ?? []).Select(y => new Security()
+                Instrument[] s = elements.Cast<Instrument>().SelectMany(x => (x.available_exchanges ?? []).Select(y => new Instrument()
                 {
                     symbol = x.symbol,
                     exchange = y,

@@ -1,102 +1,116 @@
-﻿using Npgsql;
+﻿using Newtonsoft.Json;
+using Npgsql;
 
-namespace thesis_api
+namespace ThesisAPI
 {
     public static class DBHelper
     {
         // API masterkey for meta data and testing
-        public static string masterkey;
+        public static string Masterkey;
 
-        // connection string
-        static string connection_string;
+        // ConnectionString
+        private static string ConnectionString;
 
-        // Database context
-        private static NpgsqlDataSource DB;
-        private static NpgsqlDataSource db_context
+        // Database connection entity
+        private static NpgsqlDataSource Context;
+
+        public static void init()
         {
-            get
-            {
-                if (DB == null)
-                {
-                    // envirenmental variables
-                    masterkey = Environment.GetEnvironmentVariable("MASTERKEY");
-                    string host = Environment.GetEnvironmentVariable("DB_HOST");
-                    string user = Environment.GetEnvironmentVariable("DB_USER");
-                    string pass = Environment.GetEnvironmentVariable("DB_PASSWORD");
-                    string name = Environment.GetEnvironmentVariable("DB_NAME");
+            // envirenmental variables
+            Masterkey = Environment.GetEnvironmentVariable("MASTERKEY");
+            string host = Environment.GetEnvironmentVariable("DB_HOST");
+            string user = Environment.GetEnvironmentVariable("DB_USER");
+            string pass = Environment.GetEnvironmentVariable("DB_PASSWORD");
+            string name = Environment.GetEnvironmentVariable("DB_NAME");
 
-                    // connection string
-                    connection_string = $"Host={host};Username={user};Password={pass};Database={name};Include Error Detail=true;Timeout=300;CommandTimeout=300";
+            // connection
+            ConnectionString = $"Host={host};Username={user};Password={pass};Database={name};Include Error Detail=true;Timeout=30;CommandTimeout=30";
 
-                    // context
-                    DB = NpgsqlDataSource.Create(connection_string);
-                }
-                return DB;
-            }
+            // context
+            Context = NpgsqlDataSource.Create(ConnectionString);
         }
 
-        // query
-        public static async Task<(string, bool)> DatabaseQuery(string command)
+        // Query
+        public static async Task<(bool, string, int)> DatabaseQuery(string table, string fields, string whereClause = "")
         {
+            // result
+            List<Dictionary<string, object>> result = new List<Dictionary<string, object>>();
+
             try
             {
-                string result = "";
-
-                await using (NpgsqlCommand cmd = db_context.CreateCommand(command))
-                await using (NpgsqlDataReader data = await cmd.ExecuteReaderAsync())
+                // connection
+                using (var connection = new NpgsqlConnection(ConnectionString))
                 {
-                    while (await data.ReadAsync())
+                    connection.Open();
+                    string query = $"SELECT {fields} from {table} {whereClause}";
+
+                    // command
+                    using (var cmd = new NpgsqlCommand(query, connection))
                     {
-                        string row = "";
-                        for (int i = 0; i < data.FieldCount; i++) row = $"{row}{data.GetValue(i)};";
-                        result = $"{result}{row}\n";
+                        // select
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            // read
+                            while (reader.Read())
+                            {
+                                var row = new Dictionary<string, object>();
+                                for (int i = 0; i < reader.FieldCount; i++)
+                                {
+                                    row[reader.GetName(i)] = reader.GetValue(i);
+                                }
+                                result.Add(row);
+                            }
+                        }
                     }
                 }
-
-                return (result, true);
             }
 
+            // error
             catch (Exception ex)
             {
-                return ($"db query: {ex.Message}", false);
+                return (false, ex.Message, 0);
             }
+
+
+            // done
+            return (true, "{\"data\":" + JsonConvert.SerializeObject(result) + "}", result.Count);
         }
 
-        // command
-        public static async Task<(string, bool)> DatabaseExecute(string command)
+        // Command
+        public static async Task<(bool, string)> DatabaseExecute(string command)
         {
             try
             {
                 int result = 00;
 
-                await using (NpgsqlCommand cmd = db_context.CreateCommand(command))
+                await using (NpgsqlCommand cmd = Context.CreateCommand(command))
                 {
                     result = await cmd.ExecuteNonQueryAsync();
                 }
 
-                return ($"{result} rows affected.", true);
+                return (true, $"{result} rows affected.");
             }
 
             catch (Exception ex)
             {
-                return ($"db execution: {ex.Message}", false);
+                return (false, $"db execution error: {ex.Message}");
             }
         }
 
         // binary copy : securities
-        public static async Task<(string, bool)> DatabaseBulkImport(List<Security> data, string endpoint)
+        public static async Task<(bool, string)> DatabaseBulkImport(List<Instrument> data, string endpoint)
         {
             try
             {
-                await using (NpgsqlConnection conn = new NpgsqlConnection(connection_string))
+                await using (NpgsqlConnection conn = new NpgsqlConnection(ConnectionString))
                 {
                     conn.Open();
                     Console.WriteLine("  - importing bulk data");
 
                     // bulk import
-                    await using (var writer = conn.BeginBinaryImport("COPY securities_input (security_type, symbol, exchange, currency, currency_base, currency_quote, name, country, type) FROM STDIN (FORMAT BINARY)"))
+                    await using (var writer = conn.BeginBinaryImport("COPY instrument_input (instrument_type, symbol, exchange, currency, currency_base, currency_quote, name, country, type) FROM STDIN (FORMAT BINARY)"))
                     {
-                        foreach (Security n in data.Distinct())
+                        foreach (Instrument n in data.Distinct())
                         {
                             writer.StartRow();
                             writer.Write(endpoint);
@@ -112,14 +126,14 @@ namespace thesis_api
 
                         string result = writer.Complete().ToString() + " rows affected.";
 
-                        return (result, true);
+                        return (true, result);
                     }
                 }
             }
 
             catch (Exception ex)
             {
-                return ($"binary import error: {ex.Message}", false);
+                return (false, $"binary import error: {ex.Message}");
             }
         }
     }

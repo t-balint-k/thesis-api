@@ -1,4 +1,4 @@
-﻿namespace thesis_api
+﻿namespace ThesisAPI
 {
     public static partial class Endpoint
     {

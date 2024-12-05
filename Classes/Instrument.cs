@@ -1,6 +1,6 @@
-﻿namespace thesis_api
+﻿namespace ThesisAPI
 {
-    public class Security
+    public class Instrument
     {
         public string? symbol;
         public string? name;

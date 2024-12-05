@@ -1,4 +1,4 @@
-﻿namespace thesis_api
+﻿namespace ThesisAPI
 {
     public static class SendResponse
     {
@@ -36,6 +36,11 @@
         {
             Console.WriteLine($"Error reaching third party API: {message}");
             return Results.StatusCode(500);
+        }
+
+        public static IResult Ok(string json)
+        {
+            return Results.Text(json, "application/json", statusCode: 200);
         }
     }
 }

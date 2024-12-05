@@ -1,73 +1,50 @@
-﻿namespace thesis_api
+﻿namespace ThesisAPI
 {
     public static partial class Endpoint
     {
-        public static IResult GetData(string? datatype)
+        public async static Task<IResult> GetData(string? datatype)
         {
             // Error : no inputs
             if (string.IsNullOrEmpty(datatype)) return SendResponse.BadRequest();
 
             // Building the query string
-            string[] fields = [];
+            string fields = "";
             string table = "";
 
             switch (datatype)
             {
-                case "Security"  :
-                    fields = ["id", "security_type", "symbol", "name", "exchange", "currency", "country", "type", "currency_base", "currency_quote"];
-                    table = "securities";
+                case "Instrument"  :
+                    fields = "id,valid_from,valid_to,instrument_type,symbol,name,exchange,currency,country,type,currency_base,currency_quote";
+                    table = "instrument";
                     break;
                 case "Portfolio"  :
-                    fields = ["id", "user_fk", "creation_time", "name", "pool", "currency"];
-                    table = "portfolios";
+                    fields = "id,user_fk,creation_time,name,pool,currency";
+                    table = "portfolio";
                     break;
                 case "Tranzaction":
-                    fields = ["id", "portfolio_fk", "security_fk", "creation_time", "amount", "price"];
-                    table = "tranzactions";
+                    fields = "id,portfolio_fk,instrument_fk,creation_time,amount,price";
+                    table = "tranzaction";
                     break;
                 case "Country":
-                    fields = ["id", "name", "iso3", "currency"];
-                    table = "countries";
+                    fields = "id,name,iso3,currency";
+                    table = "country";
                     break;
                 case "Exchange":
-                    fields = ["id", "name", "country"];
-                    table = "exchanges";
+                    fields = "id,name,country";
+                    table = "exchange";
                     break;
+                default:
+                    return SendResponse.NotFound($"Table '{table} not found'");
             }
 
             // Query : pool size
-            string query = $"select {string.Join(',', fields)} from {table}";
-            Console.WriteLine(query);
-            (string result, bool success) = DBHelper.DatabaseQuery(query).Result;
+            (bool success, string result, int records) = await DBHelper.DatabaseQuery(table, fields);
 
             // Error : internal server error
             if (!success) return SendResponse.ServerError(result);
 
-            // Empty set
-            if (result.Trim('\n') == "") return Results.Ok("{\"data\": []}");
-
-            // Parsing
-            string[] records = result.Split('\n').Where(x => x != "").ToArray();
-
-            string json = "{\"data\":[";
-            foreach (string n in records)
-            {
-                string entity = "{";
-                for (int i = 0; i < fields.Length; i++)
-                {
-                    string[] record = n.Split(';');
-                    entity = $"{entity}\"{fields[i]}\":\"{record[i]}\",";
-                }
-
-                entity = entity.Substring(0, entity.Length - 1) + "}";
-
-                json = $"{json}{entity},";
-            }
-
-            json = json.Substring(0, json.Length - 1) + "]}";
-
             // Ok
-            return Results.Text(json, "application/json");
+            return SendResponse.Ok(result);
         }
     }
 }
