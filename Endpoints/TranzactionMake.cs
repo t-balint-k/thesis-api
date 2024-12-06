@@ -4,10 +4,10 @@ namespace ThesisAPI
 {
     public static partial class Endpoint
     {
-        public static async Task<IResult> TranzactionMake(int? portfolio_fk, int? instrument_fk, double? amount, double? price)
+        public static async Task<IResult> TranzactionMake(int? portfolio_fk, int? instrument_fk, double? amount, double? price, double? rate)
         {
             // Error : no inputs
-            if (portfolio_fk == null || instrument_fk == null || amount == null || price == null) return SendResponse.BadRequest();
+            if (portfolio_fk == null || instrument_fk == null || amount == null || price == null || rate == null) return SendResponse.BadRequest();
 
             // Query : pool size
             string whereClause = $"where id = {portfolio_fk}";
@@ -25,7 +25,7 @@ namespace ThesisAPI
 
             // Query : tranzaction history
             whereClause = $"where portfolio_fk = {portfolio_fk}";
-            (success, result, records) = await DBHelper.DatabaseQuery("tranzaction", "sum(amount*price) as product", whereClause);
+            (success, result, records) = await DBHelper.DatabaseQuery("tranzaction", "sum(amount*price*rate) as product", whereClause);
 
             // Error : internal server error
             if (!success) return SendResponse.ServerError(result);
@@ -38,13 +38,13 @@ namespace ThesisAPI
 
             // Checking pool depletion
             double available = pool - exp;
-            double requsest = (double)amount * (double)price;
+            double requsest = (double)amount * (double)price * (double)rate;
 
             // Error : portfolio pool depleted
             if (available < requsest) return SendResponse.Denied($"insufficient funds in portfolio pool ({available} < {requsest})");
 
             // Query : inserting new tranzaction record
-            (success, result) = DBHelper.DatabaseExecute($"insert into tranzaction (portfolio_fk, instrument_fk, amount, price) values ({portfolio_fk}, {instrument_fk}, {amount}, {price})").Result;
+            (success, result) = DBHelper.DatabaseExecute($"insert into tranzaction (portfolio_fk, instrument_fk, amount, price, rate) values ({portfolio_fk}, {instrument_fk}, {amount}, {price}, {rate})").Result;
 
             // Error: internal server error
             if (!success) return SendResponse.ServerError(result);

@@ -37,7 +37,7 @@
             wa.MapGet("/v1/PortfolioList", (int? user) => { return Endpoint.PortfolioList(user); });
             wa.MapGet("/v1/PortfolioRemove", (int? portfolio) => { return Endpoint.PortfolioRemove(portfolio); });
 
-            wa.MapGet("/v1/TranzactionMake", (int? portfolio, int? instrument, double? amount, double? price) => { return Endpoint.TranzactionMake(portfolio, instrument, amount, price); });
+            wa.MapGet("/v1/TranzactionMake", (int? portfolio, int? instrument, double? amount, double? price, double? rate) => { return Endpoint.TranzactionMake(portfolio, instrument, amount, price, rate); });
             wa.MapGet("/v1/TranzactionList", (int? portfolio) => { return Endpoint.TranzactionList(portfolio); });
 
             wa.MapGet("/v1/GetData", (string? datatype) => { return Endpoint.GetData(datatype); });

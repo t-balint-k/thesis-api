@@ -9,7 +9,7 @@
 
             // Query
             string whereClause = $"where portfolio_fk = {portfolio_fk}";
-            (bool success, string result, int records) = await DBHelper.DatabaseQuery("tranzaction", "portfolio_fk,instrument_fk,creation_time,amount,price", whereClause);
+            (bool success, string result, int records) = await DBHelper.DatabaseQuery("tranzaction", "portfolio_fk,instrument_fk,creation_time,amount,price,rate", whereClause);
 
             // Error : internal server error
             if (!success) return SendResponse.ServerError(result);
